@@ -1,4 +1,3 @@
-
 package com.omnisage.app
 
 import android.os.Bundle
@@ -76,13 +75,13 @@ fun OmniSageApp() {
                 .background(Background)
                 .windowInsetsPadding(WindowInsets.safeDrawing)
         ) {
-            TopBar(
-                onNewChat = {
+            TopBar(onNewChat = {
+                if (!isSending) {
                     messages = listOf(
                         ChatMessage("A fresh start. What would you like to work on?", false)
                     )
                 }
-            )
+            })
 
             if (messages.size == 1) {
                 WelcomePanel()
@@ -102,7 +101,7 @@ fun OmniSageApp() {
 
                 if (isSending) {
                     item {
-                        MessageBubble(ChatMessage("Connecting to Omni Sage...", false))
+                        MessageBubble(ChatMessage("Thinking...", false))
                     }
                 }
             }
@@ -111,70 +110,60 @@ fun OmniSageApp() {
                 value = input,
                 onValueChange = { input = it },
                 onSend = {
-                    val messageText = input.trim()
+                    val text = input.trim()
 
-                    if (messageText.isNotEmpty() && !isSending) {
-                        messages = messages + ChatMessage(messageText, true)
+                    if (text.isNotEmpty() && !isSending) {
+                        messages = messages + ChatMessage(text, true)
                         input = ""
                         isSending = true
 
                         Thread {
-                            var reply: String
+                            var reply = "Something went wrong."
 
                             try {
-                                val connection = URL(
-                                    "http://127.0.0.1:8000/chat"
-                                ).openConnection() as HttpURLConnection
+                                val connection =
+                                    URL("http://127.0.0.1:8000/chat")
+                                        .openConnection() as HttpURLConnection
 
                                 connection.requestMethod = "POST"
                                 connection.connectTimeout = 10000
-                                connection.readTimeout = 15000
+                                connection.readTimeout = 20000
                                 connection.doOutput = true
                                 connection.setRequestProperty(
                                     "Content-Type",
-                                    "application/json"
+                                    "application/json; charset=UTF-8"
                                 )
 
-                                val requestBody = JSONObject()
-                                    .put("message", messageText)
+                                val request = JSONObject()
+                                    .put("message", text)
                                     .toString()
 
-                                connection.outputStream.use { output ->
-                                    output.write(requestBody.toByteArray(Charsets.UTF_8))
+                                connection.outputStream.use {
+                                    it.write(request.toByteArray(Charsets.UTF_8))
                                 }
 
-                                val responseCode = connection.responseCode
+                                val code = connection.responseCode
 
-                                val responseStream =
-                                    if (responseCode in 200..299) {
-                                        connection.inputStream
-                                    } else {
-                                        connection.errorStream
-                                    }
+                                val stream = if (code in 200..299) {
+                                    connection.inputStream
+                                } else {
+                                    connection.errorStream
+                                }
 
-                                val response = responseStream
-                                    ?.bufferedReader()
-                                    ?.use { it.readText() }
-                                    ?: "{}"
+                                val response = stream.bufferedReader().use {
+                                    it.readText()
+                                }
 
                                 val json = JSONObject(response)
-
-                                reply = if (responseCode in 200..299) {
-                                    json.optString(
-                                        "reply",
-                                        "Empty response from backend."
-                                    )
-                                } else {
-                                    json.optString(
-                                        "error",
-                                        "Server error: $responseCode"
-                                    )
-                                }
+                                reply = json.optString(
+                                    "reply",
+                                    "No reply received from backend."
+                                )
 
                                 connection.disconnect()
 
                             } catch (e: Exception) {
-                                reply = "Connection failed: ${e.message ?: "Unknown error"}"
+                                reply = "Connection error: ${e.message ?: "Check backend server."}"
                             }
 
                             mainHandler.post {
@@ -185,6 +174,17 @@ fun OmniSageApp() {
                     }
                 }
             )
+
+            Text(
+                if (isSending) "Connecting to Omni Sage backend..."
+                else "Connected to local backend • Test mode",
+                color = Muted.copy(alpha = 0.7f),
+                fontSize = 10.sp,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 9.dp),
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            )
         }
     }
 }
@@ -192,17 +192,18 @@ fun OmniSageApp() {
 @Composable
 private fun TopBar(onNewChat: () -> Unit) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(
-            horizontal = 18.dp,
-            vertical = 14.dp
-        ),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 18.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
-            modifier = Modifier.size(42.dp).background(
-                Accent.copy(alpha = 0.18f),
-                RoundedCornerShape(14.dp)
-            ),
+            modifier = Modifier
+                .size(42.dp)
+                .background(
+                    Accent.copy(alpha = 0.18f),
+                    RoundedCornerShape(14.dp)
+                ),
             contentAlignment = Alignment.Center
         ) {
             Text("✦", color = Accent, fontSize = 25.sp)
@@ -218,7 +219,6 @@ private fun TopBar(onNewChat: () -> Unit) {
                 fontWeight = FontWeight.Bold,
                 letterSpacing = 1.5.sp
             )
-
             Text(
                 "PERSONAL AI ASSISTANT",
                 color = Muted,
@@ -242,17 +242,15 @@ private fun TopBar(onNewChat: () -> Unit) {
 @Composable
 private fun WelcomePanel() {
     Column(
-        modifier = Modifier.fillMaxWidth().padding(
-            horizontal = 22.dp,
-            vertical = 22.dp
-        ),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 22.dp, vertical = 22.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Box(
-            modifier = Modifier.size(66.dp).background(
-                Accent.copy(alpha = 0.14f),
-                CircleShape
-            ),
+            modifier = Modifier
+                .size(66.dp)
+                .background(Accent.copy(alpha = 0.14f), CircleShape),
             contentAlignment = Alignment.Center
         ) {
             Text("✦", color = Accent, fontSize = 34.sp)
@@ -288,13 +286,11 @@ private fun MessageBubble(message: ChatMessage) {
         }
     ) {
         Column(
-            modifier = Modifier.widthIn(max = 300.dp)
+            modifier = Modifier
+                .widthIn(max = 300.dp)
                 .background(
-                    if (message.fromUser) {
-                        Accent.copy(alpha = 0.20f)
-                    } else {
-                        Surface
-                    },
+                    if (message.fromUser) Accent.copy(alpha = 0.20f)
+                    else Surface,
                     RoundedCornerShape(18.dp)
                 )
                 .padding(horizontal = 15.dp, vertical = 12.dp)
@@ -307,7 +303,6 @@ private fun MessageBubble(message: ChatMessage) {
                     fontWeight = FontWeight.Bold,
                     letterSpacing = 1.sp
                 )
-
                 Spacer(Modifier.height(5.dp))
             }
 
@@ -328,7 +323,8 @@ private fun Composer(
     onSend: () -> Unit
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier
+            .fillMaxWidth()
             .padding(horizontal = 14.dp, vertical = 12.dp)
             .background(Surface, RoundedCornerShape(25.dp))
             .padding(
@@ -342,7 +338,9 @@ private fun Composer(
         BasicTextField(
             value = value,
             onValueChange = onValueChange,
-            modifier = Modifier.weight(1f).padding(vertical = 10.dp),
+            modifier = Modifier
+                .weight(1f)
+                .padding(vertical = 10.dp),
             textStyle = androidx.compose.ui.text.TextStyle(
                 color = MainText,
                 fontSize = 14.sp
@@ -363,10 +361,9 @@ private fun Composer(
 
         IconButton(
             onClick = onSend,
-            modifier = Modifier.size(42.dp).background(
-                Accent,
-                CircleShape
-            )
+            modifier = Modifier
+                .size(42.dp)
+                .background(Accent, CircleShape)
         ) {
             Icon(
                 Icons.Default.Send,
@@ -376,12 +373,4 @@ private fun Composer(
             )
         }
     }
-
-    Text(
-        "Backend connected • Test mode",
-        color = Muted.copy(alpha = 0.7f),
-        fontSize = 10.sp,
-        modifier = Modifier.fillMaxWidth().padding(bottom = 9.dp),
-        textAlign = androidx.compose.ui.text.style.TextAlign.Center
-    )
 }
